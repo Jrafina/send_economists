@@ -32,7 +32,7 @@ def download_economist():
         dic1 = dict(zip(namelist, url_list))
         
         for name, url in dic1.items():
-            if "The Economist" in name:
+            if "The Economist –" in name:
                 found = True
                 print(f"找到目标: {name}")
                 
@@ -82,13 +82,13 @@ def download_economist():
                 break
     
     if not found:
-        print("未找到 The Economist")
+        print("未找到 The Economist –")
         return None
     
     return pdf_path
 
 if __name__ == "__main__":
-    print("开始爬取 The Economist...")
+    print("开始爬取 The Economist –...")
     print("-" * 50)
     
     pdf_file = download_economist()
