@@ -1,0 +1,118 @@
+name: Daily Economist Download
+
+on:
+  push:
+  schedule:
+    # 每天北京时间早上9点运行（UTC时间1点）
+    - cron: '0 1 * * *'
+  workflow_dispatch:  # 允许手动触发
+    inputs:
+      test_email:
+        description: '测试邮箱地址（可选，覆盖默认接收邮箱）'
+        required: false
+
+jobs:
+  download-and-send:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests lxml
+    
+    - name: Download The Economist
+      id: download
+      run: |
+        echo "开始下载 The Economist..."
+        echo "当前时间: $(date)"
+        echo "工作目录: $(pwd)"
+        
+        python economist_crawler.py
+        
+        # 检查是否下载成功
+        if ls The_Economist_*.pdf 1> /dev/null 2>&1; then
+          echo "下载成功"
+          PDF_FILE=$(ls The_Economist_*.pdf | head -1)
+          echo "pdf_file=$PDF_FILE" >> $GITHUB_OUTPUT
+          echo "success=true" >> $GITHUB_OUTPUT
+        else
+          echo "下载失败，未找到PDF文件"
+          echo "success=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Send email
+      env:
+        QQ_EMAIL: ${{ secrets.QQ_EMAIL }}
+        QQ_EMAIL_AUTH_CODE: ${{ secrets.QQ_EMAIL_AUTH_CODE }}
+        RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+      run: |
+        echo "开始发送邮件..."
+        
+        # 如果手动触发时提供了测试邮箱，则覆盖默认接收邮箱
+        if [ -n "${{ github.event.inputs.test_email }}" ]; then
+          echo "使用测试邮箱: ${{ github.event.inputs.test_email }}"
+          export RECEIVER_EMAIL="${{ github.event.inputs.test_email }}"
+        fi
+        
+        echo "发件人: $QQ_EMAIL"
+        echo "收件人: $RECEIVER_EMAIL"
+        
+        # 查找最新的PDF文件
+        PDF_FILE=""
+        if ls The_Economist_*.pdf 1> /dev/null 2>&1; then
+          PDF_FILE=$(ls The_Economist_*.pdf | head -1)
+          echo "找到PDF文件: $PDF_FILE"
+          python send_email.py "$PDF_FILE"
+        else
+          echo "未找到PDF文件，发送失败通知"
+          python send_email.py
+        fi
+    
+    - name: Upload PDF as artifact (for debugging)
+      if: always() && steps.download.outputs.success == 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: economist-pdf
+        path: The_Economist_*.pdf
+    
+    - name: Clean up
+      if: always()
+      run: |
+        echo "清理临时文件..."
+        rm -f The_Economist_*.pdf
+    
+    - name: Create summary
+      if: always()
+      run: |
+        echo "## The Economist 自动下载任务" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**执行时间:** $(date '+%Y-%m-%d %H:%M:%S') (UTC)" >> $GITHUB_STEP_SUMMARY
+        echo "**状态:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if ls The_Economist_*.pdf 1> /dev/null 2>&1; then
+          PDF_FILE=$(ls The_Economist_*.pdf | head -1)
+          FILE_SIZE=$(stat -c%s "$PDF_FILE" 2>/dev/null || stat -f%z "$PDF_FILE" 2>/dev/null)
+          FILE_SIZE_MB=$(echo "scale=2; $FILE_SIZE / 1024 / 1024" | bc)
+          
+          echo "✅ **下载状态:** 成功" >> $GITHUB_STEP_SUMMARY
+          echo "📄 **文件:** $PDF_FILE" >> $GITHUB_STEP_SUMMARY
+          echo "📏 **大小:** ${FILE_SIZE_MB} MB" >> $GITHUB_STEP_SUMMARY
+          echo "📧 **邮件:** 已发送到 ${{ secrets.RECEIVER_EMAIL }}" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **下载状态:** 失败" >> $GITHUB_STEP_SUMMARY
+          echo "📧 **邮件:** 已发送失败通知到 ${{ secrets.RECEIVER_EMAIL }}" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "---" >> $GITHUB_STEP_SUMMARY
+        echo "*此任务由 GitHub Actions 自动执行*" >> $GITHUB_STEP_SUMMARY
