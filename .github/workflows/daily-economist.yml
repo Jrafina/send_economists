@@ -1,7 +1,6 @@
 name: Daily Economist Download
 
 on:
-  push:
   schedule:
     # 每天北京时间早上9点运行（UTC时间1点）
     - cron: '0 1 * * *'
@@ -17,10 +16,10 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
     
@@ -79,7 +78,7 @@ jobs:
     
     - name: Upload PDF as artifact (for debugging)
       if: always() && steps.download.outputs.success == 'true'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: economist-pdf
         path: The_Economist_*.pdf
